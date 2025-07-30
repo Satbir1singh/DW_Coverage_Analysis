@@ -22,6 +22,16 @@ def compute_coverage_area(count_img: ee.Image, geom: ee.Geometry, scale: int) ->
     )
     return ee.Number(result.values().get(0)).multiply(PIXEL_AREA_M2).divide(10_000)
 
+def filter_out_large_id_list(fc, prop_name, exclude_ids, chunk_size=100):
+    filters = []
+    for i in range(0, len(exclude_ids), chunk_size):
+        chunk = exclude_ids[i:i + chunk_size]
+        filters.append(ee.Filter.inList(prop_name, chunk))
+    combined_filter = filters[0]
+    for f in filters[1:]:
+        combined_filter = combined_filter.Or(f)
+    return fc.filter(combined_filter.Not())
+
 # --------------------- Function 1 --------------------- #
 def run_dynamic_world_export_by_country_code(COUNTRY_ADM0_CODE: int, YEARS: list, project_name: str, percentage: float, folder_name: str):
     ee.Initialize(project=project_name)
@@ -87,9 +97,7 @@ def run_dynamic_world_export_by_country_code(COUNTRY_ADM0_CODE: int, YEARS: list
 
     hydrobasins = ee.FeatureCollection("WWF/HydroSHEDS/v1/Basins/hybas_5")
     country_basins = hydrobasins.filterBounds(country_geom)
-    filtered_basins = country_basins.filter(
-        ee.Filter.inList('HYBAS_ID', exclude_ids_num).Not()
-    )
+    filtered_basins = filter_out_large_id_list(country_basins, 'HYBAS_ID', exclude_ids_num)
 
     basin_list = filtered_basins.toList(filtered_basins.size())
     n_basins = basin_list.size().getInfo()
@@ -109,24 +117,12 @@ def run_dynamic_world_export_by_country_code(COUNTRY_ADM0_CODE: int, YEARS: list
     print("All export tasks started for selected basins.")
 
 # --------------------- Function 2 --------------------- #
-def run_dynamic_world_export_by_geom(YEARS: list,project_name: str,percentage: float,folder_name: str,country_geom: ee.Geometry):
+def run_dynamic_world_export_by_geom(YEARS: list, project_name: str, percentage: float, folder_name: str, country_geom: ee.Geometry):
     ee.Initialize(project=project_name)
 
     with open("hybas_ids.txt") as f:
         EXCLUDE_HYBAS_IDS = [line.strip() for line in f if line.strip()]
     exclude_ids_num = [int(i) for i in EXCLUDE_HYBAS_IDS]
-
-    # def compute_coverage_area(image, region, scale):
-    #     # Placeholder, you must define the actual logic
-    #     pixel_area = ee.Image.pixelArea().divide(10000)
-    #     area_image = image.multiply(pixel_area)
-    #     area = area_image.reduceRegion(
-    #         reducer=ee.Reducer.sum(),
-    #         geometry=region,
-    #         scale=scale,
-    #         maxPixels=1e13
-    #     )
-    #     return ee.Number(area.get('coverage'))
 
     def process_year_count_based(basin, year):
         year = ee.Number(year)
@@ -188,9 +184,7 @@ def run_dynamic_world_export_by_geom(YEARS: list,project_name: str,percentage: f
 
     hydrobasins = ee.FeatureCollection("WWF/HydroSHEDS/v1/Basins/hybas_5")
     country_basins = hydrobasins.filterBounds(country_geom)
-    filtered_basins = country_basins.filter(
-        ee.Filter.inList('HYBAS_ID', exclude_ids_num).Not()
-    )
+    filtered_basins = filter_out_large_id_list(country_basins, 'HYBAS_ID', exclude_ids_num)
 
     basin_list = filtered_basins.toList(filtered_basins.size())
     n_basins = basin_list.size().getInfo()
@@ -277,10 +271,7 @@ def run_dynamic_world_export_random_n_basins(COUNTRY_ADM0_CODE: int, YEARS: list
 
     hydrobasins = ee.FeatureCollection("WWF/HydroSHEDS/v1/Basins/hybas_5")
     country_basins = hydrobasins.filterBounds(country_geom)
-
-    filtered_basins = country_basins.filter(
-        ee.Filter.inList('HYBAS_ID', exclude_ids_num).Not()
-    )
+    filtered_basins = filter_out_large_id_list(country_basins, 'HYBAS_ID', exclude_ids_num)
 
     random_basins = filtered_basins.randomColumn('random').sort('random').limit(NUM_RANDOM_BASINS)
     random_basins = random_basins.select(['HYBAS_ID'])
